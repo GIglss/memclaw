@@ -60,6 +60,15 @@ jobs:
             exit 0
           fi
 
+          # Check if fork has commits not in upstream (local customizations)
+          LOCAL_ONLY=$(git log upstream/main..HEAD --oneline)
+          if [ -n "$LOCAL_ONLY" ]; then
+            echo "has_local_commits=true" >> "$GITHUB_OUTPUT"
+            echo "local_commits<<EOF" >> "$GITHUB_OUTPUT"
+            echo "$LOCAL_ONLY" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+          fi
+
           # Merge upstream main into fork's main
           if ! git merge upstream/main --no-edit; then
             echo "::error::Failed to merge upstream/main into fork main — conflicts detected"
@@ -156,6 +165,31 @@ jobs:
 
           echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
           echo "succeeded=$SUCCEEDED" >> "$GITHUB_OUTPUT"
+
+      - name: Warn about local commits being merged over
+        if: steps.sync.outputs.has_local_commits == 'true' && steps.sync.outputs.synced == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const commits = `${{ steps.sync.outputs.local_commits }}`;
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `⚠️ Upstream sync merged over your local commits`,
+              body: [
+                'An upstream sync just completed, but your fork had local commits that were not in upstream.',
+                '',
+                'These commits were present before the merge:',
+                '```',
+                commits,
+                '```',
+                '',
+                'The merge succeeded, so your changes are likely preserved — but review the above to make sure nothing was lost.',
+                '',
+                `Triggered by: ${context.sha}`,
+              ].join('\n'),
+              labels: ['upstream-sync'],
+            });
 
       - name: Open issue for upstream sync failure
         if: steps.sync.outputs.sync_failed == 'true'

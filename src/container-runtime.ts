@@ -64,6 +64,14 @@ export function stopContainer(name: string): string {
 
 /** Ensure the container runtime is running, starting it if needed. */
 export function ensureContainerRuntimeRunning(): void {
+  // On Windows, execSync('docker info') via cmd.exe consistently times out even
+  // when Docker Desktop is running. Skip the check — Docker will fail naturally
+  // at container spawn time if it's actually unavailable.
+  if (os.platform() === 'win32') {
+    logger.debug('Windows detected — skipping container runtime check');
+    return;
+  }
+
   try {
     execSync(`${CONTAINER_RUNTIME_BIN} info`, {
       stdio: 'pipe',
